@@ -3,8 +3,7 @@
  * Built with Vanilla JS, Canvas API & Firebase
  */
 
-// --- Firebase Configuration (PLACEHOLDER) ---
-// User should replace this with their actual Firebase config
+// --- Firebase Configuration ---
 const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
     authDomain: "YOUR_AUTH_DOMAIN",
@@ -14,7 +13,6 @@ const firebaseConfig = {
     appId: "YOUR_APP_ID"
 };
 
-// Initialize Firebase if config is provided
 let db, auth;
 try {
     if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
@@ -23,27 +21,54 @@ try {
         db = firebase.firestore();
     }
 } catch (e) {
-    console.warn("Firebase initialization failed. Check your config.");
+    console.warn("Firebase initialization failed.");
 }
 
 // --- Configuration & Constants ---
 const CONFIG = {
     player: {
-        speed: 5,
-        shootInterval: 250,
+        speed: 6,
+        shootInterval: 200,
         health: 100,
-        radius: 20
+        width: 60,
+        height: 60
     },
     enemy: {
-        spawnRate: 1000,
-        baseSpeed: 2,
-        radius: 15
+        spawnRate: 1200,
+        baseSpeed: 2.5,
+        width: 50,
+        height: 50
     },
     bullet: {
-        speed: 8,
+        speed: 10,
         radius: 4
     }
 };
+
+// --- Asset Loader ---
+const ASSETS = {
+    playerImg: new Image(),
+    enemyImg: new Image(),
+    bgImg: new Image(),
+    isLoaded: false
+};
+
+function loadAssets() {
+    ASSETS.playerImg.src = 'enemy/1.png';
+    ASSETS.enemyImg.src = 'enemy/2.png';
+    ASSETS.bgImg.src = 'photo/2.png';
+
+    let loadedCount = 0;
+    const totalAssets = 3;
+    const onAssetLoad = () => {
+        loadedCount++;
+        if (loadedCount === totalAssets) ASSETS.isLoaded = true;
+    };
+
+    ASSETS.playerImg.onload = onAssetLoad;
+    ASSETS.enemyImg.onload = onAssetLoad;
+    ASSETS.bgImg.onload = onAssetLoad;
+}
 
 // --- Game Engine Classes ---
 
@@ -55,40 +80,34 @@ class Game {
         this.isGameOver = false;
         this.isStarted = false;
         this.user = null;
+        this.gameTime = 0;
+        this.difficultyFactor = 1;
         
         this.player = null;
         this.bullets = [];
         this.enemies = [];
         this.particles = [];
-        this.backgroundStars = [];
+        this.bgY = 0;
         
         this.lastEnemySpawn = 0;
         this.lastShotTime = 0;
         this.keys = {};
         
+        loadAssets();
         this.init();
     }
 
     init() {
         this.resize();
-        this.initBackground();
-        window.addEventListener('resize', () => {
-            this.resize();
-            this.initBackground();
-        });
+        window.addEventListener('resize', () => this.resize());
         
-        // Input handling
         window.addEventListener('keydown', (e) => this.keys[e.code] = true);
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
-        // Touch handling
         this.canvas.addEventListener('touchstart', (e) => this.handleTouch(e), { passive: false });
         this.canvas.addEventListener('touchmove', (e) => this.handleTouch(e), { passive: false });
-        this.canvas.addEventListener('touchend', () => {
-            this.keys['Space'] = false;
-        }, { passive: false });
+        this.canvas.addEventListener('touchend', () => this.keys['Space'] = false, { passive: false });
         
-        // UI event listeners
         document.getElementById('start-button').addEventListener('click', () => this.start());
         document.getElementById('restart-button').addEventListener('click', () => this.start());
         document.getElementById('login-button').addEventListener('click', () => this.login());
@@ -111,12 +130,9 @@ class Game {
                 }
             });
         } else {
-            // Mock auth for development if no Firebase config
-            console.log("Using Mock Auth for development.");
             document.getElementById('login-button').addEventListener('click', () => {
-                const mockUser = { displayName: "이기킹 (Mock)", photoURL: "https://via.placeholder.com/30" };
-                this.user = mockUser;
-                this.showLoggedInUI(mockUser);
+                this.user = { displayName: "이기킹 (Guest)", photoURL: "https://via.placeholder.com/30" };
+                this.showLoggedInUI(this.user);
             });
         }
     }
@@ -132,7 +148,7 @@ class Game {
         document.getElementById('start-button').classList.remove('hidden');
         document.getElementById('user-info').classList.remove('hidden');
         document.getElementById('user-name').innerText = user.displayName;
-        document.getElementById('user-avatar').src = user.photoURL;
+        document.getElementById('user-avatar').src = user.photoURL || "https://via.placeholder.com/30";
     }
 
     showLoggedOutUI() {
@@ -141,54 +157,87 @@ class Game {
         document.getElementById('user-info').classList.add('hidden');
     }
 
-    toggleScoreboard(show) {
+    async toggleScoreboard(show) {
         const modal = document.getElementById('scoreboard-modal');
-        if (show) modal.classList.remove('hidden');
-        else modal.classList.add('hidden');
+        if (show) {
+            modal.classList.remove('hidden');
+            await this.loadRankings();
+        } else {
+            modal.classList.add('hidden');
+        }
+    }
+
+    async loadRankings() {
+        const scoresList = document.getElementById('scores-list');
+        scoresList.innerHTML = "Loading...";
+
+        let rankings = [];
+        if (db) {
+            try {
+                const snapshot = await db.collection('highscores').orderBy('score', 'desc').limit(10).get();
+                rankings = snapshot.docs.map(doc => doc.data());
+            } catch (e) { console.error("Firestore failed", e); }
+        }
+
+        // Fallback to local storage if Firebase fails or is empty
+        if (rankings.length === 0) {
+            const local = localStorage.getItem('localRankings');
+            rankings = local ? JSON.parse(local) : [
+                { name: "이기킹", score: 15000 },
+                { name: "에이스", score: 12000 },
+                { name: "파일럿", score: 8000 }
+            ];
+        }
+
+        scoresList.innerHTML = rankings.map((r, i) => `
+            <div class="score-entry">
+                <span>${i + 1}. ${r.name}</span>
+                <span>${r.score.toLocaleString()}</span>
+            </div>
+        `).join('');
+    }
+
+    async saveScore(score) {
+        const name = this.user ? this.user.displayName : "익명";
+        if (db) {
+            try {
+                await db.collection('highscores').add({ name, score, date: new Date() });
+            } catch (e) { console.error("Save score failed", e); }
+        }
+        
+        // Save to local storage
+        let local = JSON.parse(localStorage.getItem('localRankings') || "[]");
+        local.push({ name, score });
+        local.sort((a, b) => b.score - a.score);
+        localStorage.setItem('localRankings', JSON.stringify(local.slice(0, 10)));
     }
 
     handleTouch(e) {
         if (!this.isStarted || this.isGameOver) return;
         e.preventDefault();
-        
         const touch = e.touches[0];
         const rect = this.canvas.getBoundingClientRect();
-        const touchX = touch.clientX - rect.left;
-        const touchY = touch.clientY - rect.top;
-        
-        this.player.x += (touchX - this.player.x) * 0.2;
-        this.player.y += (touchY - 100 - this.player.y) * 0.2;
+        this.player.x = touch.clientX - rect.left;
+        this.player.y = touch.clientY - rect.top - 80;
         this.keys['Space'] = true;
     }
 
-    initBackground() {
-        this.backgroundStars = [];
-        for (let i = 0; i < 100; i++) {
-            this.backgroundStars.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                size: Math.random() * 2 + 1,
-                speed: Math.random() * 2 + 0.5
-            });
-        }
-    }
-
     drawBackground() {
-        this.ctx.fillStyle = '#0a0a0c';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        this.backgroundStars.forEach(star => {
-            this.ctx.beginPath();
-            this.ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-            this.ctx.fill();
+        if (ASSETS.isLoaded) {
+            // Parallax image background
+            const img = ASSETS.bgImg;
+            const scale = this.canvas.width / img.width;
+            const h = img.height * scale;
             
-            star.y += star.speed;
-            if (star.y > this.canvas.height) {
-                star.y = -10;
-                star.x = Math.random() * this.canvas.width;
-            }
-        });
+            this.ctx.drawImage(img, 0, this.bgY, this.canvas.width, h);
+            this.ctx.drawImage(img, 0, this.bgY - h, this.canvas.width, h);
+            
+            this.bgY += 1.5 * this.difficultyFactor;
+            if (this.bgY >= h) this.bgY = 0;
+        } else {
+            this.ctx.fillStyle = '#0a0a0c';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
     }
 
     resize() {
@@ -203,6 +252,8 @@ class Game {
         this.enemies = [];
         this.particles = [];
         this.score = 0;
+        this.gameTime = 0;
+        this.difficultyFactor = 1;
         this.isGameOver = false;
         this.isStarted = true;
         
@@ -213,13 +264,13 @@ class Game {
 
     gameOver() {
         this.isGameOver = true;
-        document.getElementById('final-score').innerText = this.score;
+        document.getElementById('final-score').innerText = this.score.toLocaleString();
         document.getElementById('game-over-screen').classList.remove('hidden');
-        // Save score if logged in (Firestore logic would go here)
+        this.saveScore(this.score);
     }
 
     updateUI() {
-        document.getElementById('score-value').innerText = this.score;
+        document.getElementById('score-value').innerText = this.score.toLocaleString();
         const healthBar = document.getElementById('health-bar');
         if (this.player) {
             const healthPercent = Math.max(0, (this.player.health / CONFIG.player.health) * 100);
@@ -228,12 +279,11 @@ class Game {
     }
 
     spawnEnemy(timestamp) {
-        if (timestamp - this.lastEnemySpawn > CONFIG.enemy.spawnRate) {
-            const x = Math.random() * (this.canvas.width - CONFIG.enemy.radius * 2) + CONFIG.enemy.radius;
-            this.enemies.push(new Enemy(x, -50));
+        const currentSpawnRate = CONFIG.enemy.spawnRate / this.difficultyFactor;
+        if (timestamp - this.lastEnemySpawn > currentSpawnRate) {
+            const x = Math.random() * (this.canvas.width - CONFIG.enemy.width) + CONFIG.enemy.width / 2;
+            this.enemies.push(new Enemy(x, -50, this.difficultyFactor));
             this.lastEnemySpawn = timestamp;
-            
-            CONFIG.enemy.spawnRate = Math.max(300, 1000 - (this.score * 0.5));
         }
     }
 
@@ -242,13 +292,12 @@ class Game {
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 const b = this.bullets[i];
                 const e = this.enemies[j];
-                
                 const dist = Math.hypot(b.x - e.x, b.y - e.y);
-                if (dist < b.radius + e.radius) {
+                if (dist < 30) {
                     this.createExplosion(e.x, e.y, '#ffd700');
                     this.bullets.splice(i, 1);
                     this.enemies.splice(j, 1);
-                    this.score += 100; // Reward points for kill
+                    this.score += 100;
                     this.updateUI();
                     break;
                 }
@@ -259,34 +308,32 @@ class Game {
             for (let i = this.enemies.length - 1; i >= 0; i--) {
                 const e = this.enemies[i];
                 const dist = Math.hypot(this.player.x - e.x, this.player.y - e.y);
-                
-                if (dist < this.player.radius + e.radius) {
-                    this.player.health -= 20;
+                if (dist < 40) {
+                    this.player.health -= 25;
                     this.createExplosion(e.x, e.y, '#ff3e3e');
                     this.enemies.splice(i, 1);
                     this.updateUI();
-                    
-                    if (this.player.health <= 0) {
-                        this.gameOver();
-                    }
+                    if (this.player.health <= 0) this.gameOver();
                 }
             }
         }
     }
 
     createExplosion(x, y, color) {
-        for (let i = 0; i < 15; i++) {
-            this.particles.push(new Particle(x, y, color));
-        }
+        for (let i = 0; i < 20; i++) this.particles.push(new Particle(x, y, color));
     }
 
     update(timestamp) {
         if (!this.isStarted || this.isGameOver) return;
 
+        // Difficulty scaling over time
+        this.gameTime += 16.67; // approx ms per frame
+        this.difficultyFactor = 1 + (this.gameTime / 30000); // Increases by 1 every 30 seconds
+
         this.player.update(this.keys, this.canvas);
         
         if ((this.keys['Space'] || this.keys['KeyZ']) && timestamp - this.lastShotTime > CONFIG.player.shootInterval) {
-            this.bullets.push(new Bullet(this.player.x, this.player.y - 20));
+            this.bullets.push(new Bullet(this.player.x, this.player.y - 30));
             this.lastShotTime = timestamp;
         }
 
@@ -298,7 +345,7 @@ class Game {
         this.spawnEnemy(timestamp);
         this.enemies.forEach((e, i) => {
             e.update();
-            if (e.y > this.canvas.height + 50) this.enemies.splice(i, 1);
+            if (e.y > this.canvas.height + 100) this.enemies.splice(i, 1);
         });
 
         this.particles.forEach((p, i) => {
@@ -311,16 +358,11 @@ class Game {
 
     draw() {
         this.drawBackground();
-
         if (!this.isStarted) return;
-
         this.particles.forEach(p => p.draw(this.ctx));
         this.bullets.forEach(b => b.draw(this.ctx));
         this.enemies.forEach(e => e.draw(this.ctx));
-        
-        if (this.player && !this.isGameOver) {
-            this.player.draw(this.ctx);
-        }
+        if (this.player && !this.isGameOver) this.player.draw(this.ctx);
     }
 
     animate(timestamp = 0) {
@@ -332,28 +374,23 @@ class Game {
 
 class Player {
     constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.radius = CONFIG.player.radius;
+        this.x = x; this.y = y;
         this.health = CONFIG.player.health;
-        this.color = '#ff3e3e';
         this.tilt = 0;
     }
 
     update(keys, canvas) {
-        let dx = 0;
-        let dy = 0;
-        
+        let dx = 0; let dy = 0;
         if (keys['ArrowLeft'] || keys['KeyA']) dx -= CONFIG.player.speed;
         if (keys['ArrowRight'] || keys['KeyD']) dx += CONFIG.player.speed;
         if (keys['ArrowUp'] || keys['KeyW']) dy -= CONFIG.player.speed;
         if (keys['ArrowDown'] || keys['KeyS']) dy += CONFIG.player.speed;
 
-        this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x + dx));
-        this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y + dy));
+        this.x = Math.max(30, Math.min(canvas.width - 30, this.x + dx));
+        this.y = Math.max(30, Math.min(canvas.height - 30, this.y + dy));
         
-        if (dx < 0) this.tilt = Math.max(-0.3, this.tilt - 0.05);
-        else if (dx > 0) this.tilt = Math.min(0.3, this.tilt + 0.05);
+        if (dx < 0) this.tilt = Math.max(-0.2, this.tilt - 0.05);
+        else if (dx > 0) this.tilt = Math.min(0.2, this.tilt + 0.05);
         else this.tilt *= 0.9;
     }
 
@@ -361,110 +398,63 @@ class Player {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.tilt);
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = this.color;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.moveTo(0, -25);
-        ctx.lineTo(15, 10);
-        ctx.lineTo(0, 5);
-        ctx.lineTo(-15, 10);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(-30, 0);
-        ctx.lineTo(30, 0);
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = this.color;
-        ctx.stroke();
+        if (ASSETS.isLoaded) {
+            ctx.drawImage(ASSETS.playerImg, -30, -30, 60, 60);
+        } else {
+            ctx.fillStyle = '#ff3e3e';
+            ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(20, 10); ctx.lineTo(-20, 10); ctx.closePath(); ctx.fill();
+        }
         ctx.restore();
     }
 }
 
 class Enemy {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.radius = CONFIG.enemy.radius;
-        this.speed = CONFIG.enemy.baseSpeed + Math.random();
-        this.color = '#ffd700';
+    constructor(x, y, diff) {
+        this.x = x; this.y = y;
+        this.speed = (CONFIG.enemy.baseSpeed + Math.random()) * diff;
     }
 
     update() {
         this.y += this.speed;
-        this.x += Math.sin(this.y / 30) * 1.5;
+        this.x += Math.sin(this.y / 40) * 1.2;
     }
 
     draw(ctx) {
         ctx.save();
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.color;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y + 20);
-        ctx.lineTo(this.x - 15, this.y - 10);
-        ctx.lineTo(this.x, this.y - 5);
-        ctx.lineTo(this.x + 15, this.y - 10);
-        ctx.closePath();
-        ctx.fill();
+        if (ASSETS.isLoaded) {
+            ctx.translate(this.x, this.y);
+            ctx.rotate(Math.PI); // Enemy faces down
+            ctx.drawImage(ASSETS.enemyImg, -25, -25, 50, 50);
+        } else {
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath(); ctx.arc(this.x, this.y, 15, 0, Math.PI * 2); ctx.fill();
+        }
         ctx.restore();
     }
 }
 
 class Bullet {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.radius = CONFIG.bullet.radius;
-        this.color = '#00f2ff';
-    }
-
-    update() {
-        this.y -= CONFIG.bullet.speed;
-    }
-
+    constructor(x, y) { this.x = x; this.y = y; }
+    update() { this.y -= CONFIG.bullet.speed; }
     draw(ctx) {
-        ctx.save();
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.color;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.fillStyle = '#00f2ff';
+        ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 10; ctx.shadowColor = '#00f2ff';
     }
 }
 
 class Particle {
     constructor(x, y, color) {
-        this.x = x;
-        this.y = y;
-        this.color = color;
+        this.x = x; this.y = y; this.color = color;
         this.radius = Math.random() * 3 + 1;
-        this.velocity = {
-            x: (Math.random() - 0.5) * 5,
-            y: (Math.random() - 0.5) * 5
-        };
-        this.alpha = 1;
-        this.decay = Math.random() * 0.02 + 0.01;
+        this.velocity = { x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6 };
+        this.alpha = 1; this.decay = Math.random() * 0.03 + 0.02;
     }
-
-    update() {
-        this.x += this.velocity.x;
-        this.y += this.velocity.y;
-        this.alpha -= this.decay;
-    }
-
+    update() { this.x += this.velocity.x; this.y += this.velocity.y; this.alpha -= this.decay; }
     draw(ctx) {
-        ctx.save();
-        ctx.globalAlpha = this.alpha;
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.save(); ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
 }
 
-// Start the engine
 new Game();
