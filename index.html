@@ -1,14 +1,31 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hello World</title>
-  <link href='/style.css' rel='stylesheet'>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>1945 Air Force - Modern Remake</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Hello, world!</h1>
-  <button onclick="console.log('hello');">Press me</button>
-  <script defer type="text/javascript" src="/main.js"></script>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-overlay">
+            <div id="score-board">SCORE: <span id="score-value">0</span></div>
+            <div id="health-bar-container">
+                <div id="health-bar"></div>
+            </div>
+        </div>
+        <div id="start-screen" class="overlay">
+            <h1>1945 AIR FORCE</h1>
+            <p>FLY AND SURVIVE</p>
+            <button id="start-button">START MISSION</button>
+        </div>
+        <div id="game-over-screen" class="overlay hidden">
+            <h1>MISSION FAILED</h1>
+            <p>FINAL SCORE: <span id="final-score">0</span></p>
+            <button id="restart-button">RETRY</button>
+        </div>
+    </div>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
