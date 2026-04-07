@@ -113,7 +113,8 @@ canvas {
 }
 
 #start-screen {
-    background-image: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.7)), url('photo/2.png');
+    background-color: #000;
+    background-image: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.7)), url('photo/2.jpg');
     background-size: cover;
     background-position: center;
 }

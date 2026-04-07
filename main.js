@@ -35,27 +35,26 @@ const CONFIG = {
 
 // --- ASSET LOADER ---
 const ASSETS = {
-    player: new Image(),
-    enemy: new Image(),
-    background: new Image(),
-    isLoaded: false
+    player: { img: new Image(), ready: false, src: 'enemy/1.png' },
+    enemy: { img: new Image(), ready: false, src: 'enemy/2.png' },
+    background: { img: new Image(), ready: false, src: 'photo/2.jpg' }
 };
 
 function loadAssets() {
-    ASSETS.player.src = 'enemy/1.png';
-    ASSETS.enemy.src = 'enemy/2.png';
-    ASSETS.background.src = 'photo/2.png';
-
-    let loadedCount = 0;
-    const toLoad = 3;
-    const onLoad = () => {
-        loadedCount++;
-        if (loadedCount === toLoad) ASSETS.isLoaded = true;
-    };
-
-    ASSETS.player.onload = onLoad;
-    ASSETS.enemy.onload = onLoad;
-    ASSETS.background.onload = onLoad;
+    Object.keys(ASSETS).forEach(key => {
+        const asset = ASSETS[key];
+        asset.img.src = asset.src;
+        
+        asset.img.onload = () => {
+            asset.ready = true;
+            console.log(`Asset Loaded: ${key}`);
+        };
+        
+        asset.img.onerror = () => {
+            asset.ready = false;
+            console.error(`Asset Failed: ${key} (${asset.src})`);
+        };
+    });
 }
 
 // --- STORAGE MANAGER ---
@@ -177,7 +176,6 @@ class Game {
         if (this.player) {
             const hpPercent = Math.max(0, (this.player.health / CONFIG.player.health) * 100);
             healthBar.style.width = `${hpPercent}%`;
-            healthBar.style.background = hpPercent < 30 ? '#ff3e3e' : 'linear-gradient(to right, #ff3e3e, #ff7e7e)';
         }
     }
 
@@ -216,7 +214,6 @@ class Game {
                     this.bullets.splice(i, 1);
                     this.score += 100 * this.wave;
                     
-                    // 아이템 드롭
                     if (Math.random() < CONFIG.item.spawnChance) {
                         this.items.push(new Item(e.x, e.y));
                     }
@@ -260,7 +257,6 @@ class Game {
         if (!this.isStarted || this.isGameOver) return;
 
         this.gameTime += 16.67;
-        // 20초마다 난이도 계수 상승 및 웨이브 업
         this.difficultyFactor = 1 + (this.gameTime / 20000);
         const newWave = Math.floor(this.gameTime / 20000) + 1;
         if (newWave !== this.wave) {
@@ -270,7 +266,6 @@ class Game {
 
         this.player.update(this.keys, this.canvas);
         
-        // 슈팅 로직
         const shootInt = CONFIG.player.shootInterval / (1 + (this.player.powerLevel * 0.2));
         if ((this.keys['Space'] || this.keys['KeyZ']) && timestamp - this.lastShotTime > shootInt) {
             if (this.player.powerLevel >= 2) {
@@ -310,13 +305,17 @@ class Game {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
         // 배경 드로잉 (무한 스크롤)
-        if (ASSETS.isLoaded) {
-            const scale = this.canvas.width / ASSETS.background.width;
-            const h = ASSETS.background.height * scale;
-            this.ctx.drawImage(ASSETS.background, 0, this.bgY, this.canvas.width, h);
-            this.ctx.drawImage(ASSETS.background, 0, this.bgY - h, this.canvas.width, h);
+        if (ASSETS.background.ready) {
+            const img = ASSETS.background.img;
+            const scale = this.canvas.width / img.width;
+            const h = img.height * scale;
+            this.ctx.drawImage(img, 0, this.bgY, this.canvas.width, h);
+            this.ctx.drawImage(img, 0, this.bgY - h, this.canvas.width, h);
             this.bgY += 1.5 * this.difficultyFactor;
             if (this.bgY >= h) this.bgY = 0;
+        } else {
+            this.ctx.fillStyle = '#0a0a0c';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
         if (!this.isStarted) return;
@@ -380,13 +379,12 @@ class Player {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.tilt);
         
-        // 무적 상태 깜빡임
         if (this.isInvincible && Math.floor(Date.now() / 100) % 2 === 0) {
             ctx.globalAlpha = 0.3;
         }
 
-        if (ASSETS.isLoaded) {
-            ctx.drawImage(ASSETS.player, -CONFIG.player.width/2, -CONFIG.player.height/2, CONFIG.player.width, CONFIG.player.height);
+        if (ASSETS.player.ready) {
+            ctx.drawImage(ASSETS.player.img, -CONFIG.player.width/2, -CONFIG.player.height/2, CONFIG.player.width, CONFIG.player.height);
         } else {
             ctx.fillStyle = '#ff3e3e';
             ctx.beginPath(); ctx.moveTo(0, -25); ctx.lineTo(25, 15); ctx.lineTo(-25, 15); ctx.closePath(); ctx.fill();
@@ -415,9 +413,9 @@ class Enemy {
     draw(ctx) {
         ctx.save();
         ctx.translate(this.x, this.y);
-        if (ASSETS.isLoaded) {
-            ctx.rotate(Math.PI); // 적군은 아래를 향함
-            ctx.drawImage(ASSETS.enemy, -CONFIG.enemy.width/2, -CONFIG.enemy.height/2, CONFIG.enemy.width, CONFIG.enemy.height);
+        if (ASSETS.enemy.ready) {
+            ctx.rotate(Math.PI); 
+            ctx.drawImage(ASSETS.enemy.img, -CONFIG.enemy.width/2, -CONFIG.enemy.height/2, CONFIG.enemy.width, CONFIG.enemy.height);
         } else {
             ctx.fillStyle = '#ffd700';
             ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.fill();
