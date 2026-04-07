@@ -1,7 +1,30 @@
 /**
- * 1945 Air Force - Modern Remake
- * Built with Vanilla JS & Canvas API
+ * 이기킹의 비행기 - 1945 Air Force Modern Remake
+ * Built with Vanilla JS, Canvas API & Firebase
  */
+
+// --- Firebase Configuration (PLACEHOLDER) ---
+// User should replace this with their actual Firebase config
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+
+// Initialize Firebase if config is provided
+let db, auth;
+try {
+    if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        firebase.initializeApp(firebaseConfig);
+        auth = firebase.auth();
+        db = firebase.firestore();
+    }
+} catch (e) {
+    console.warn("Firebase initialization failed. Check your config.");
+}
 
 // --- Configuration & Constants ---
 const CONFIG = {
@@ -31,6 +54,7 @@ class Game {
         this.score = 0;
         this.isGameOver = false;
         this.isStarted = false;
+        this.user = null;
         
         this.player = null;
         this.bullets = [];
@@ -40,7 +64,6 @@ class Game {
         
         this.lastEnemySpawn = 0;
         this.lastShotTime = 0;
-        
         this.keys = {};
         
         this.init();
@@ -68,8 +91,60 @@ class Game {
         // UI event listeners
         document.getElementById('start-button').addEventListener('click', () => this.start());
         document.getElementById('restart-button').addEventListener('click', () => this.start());
+        document.getElementById('login-button').addEventListener('click', () => this.login());
+        document.getElementById('scoreboard-button').addEventListener('click', () => this.toggleScoreboard(true));
+        document.getElementById('close-scoreboard').addEventListener('click', () => this.toggleScoreboard(false));
         
+        this.initAuth();
         this.animate();
+    }
+
+    initAuth() {
+        if (auth) {
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    this.user = user;
+                    this.showLoggedInUI(user);
+                } else {
+                    this.user = null;
+                    this.showLoggedOutUI();
+                }
+            });
+        } else {
+            // Mock auth for development if no Firebase config
+            console.log("Using Mock Auth for development.");
+            document.getElementById('login-button').addEventListener('click', () => {
+                const mockUser = { displayName: "이기킹 (Mock)", photoURL: "https://via.placeholder.com/30" };
+                this.user = mockUser;
+                this.showLoggedInUI(mockUser);
+            });
+        }
+    }
+
+    login() {
+        if (!auth) return;
+        const provider = new firebase.auth.GoogleAuthProvider();
+        auth.signInWithPopup(provider).catch(error => console.error(error));
+    }
+
+    showLoggedInUI(user) {
+        document.getElementById('login-button').classList.add('hidden');
+        document.getElementById('start-button').classList.remove('hidden');
+        document.getElementById('user-info').classList.remove('hidden');
+        document.getElementById('user-name').innerText = user.displayName;
+        document.getElementById('user-avatar').src = user.photoURL;
+    }
+
+    showLoggedOutUI() {
+        document.getElementById('login-button').classList.remove('hidden');
+        document.getElementById('start-button').classList.add('hidden');
+        document.getElementById('user-info').classList.add('hidden');
+    }
+
+    toggleScoreboard(show) {
+        const modal = document.getElementById('scoreboard-modal');
+        if (show) modal.classList.remove('hidden');
+        else modal.classList.add('hidden');
     }
 
     handleTouch(e) {
@@ -81,11 +156,8 @@ class Game {
         const touchX = touch.clientX - rect.left;
         const touchY = touch.clientY - rect.top;
         
-        // Move player towards touch point
         this.player.x += (touchX - this.player.x) * 0.2;
-        this.player.y += (touchY - 100 - this.player.y) * 0.2; // Offset to see player above finger
-        
-        // Auto-shoot on touch
+        this.player.y += (touchY - 100 - this.player.y) * 0.2;
         this.keys['Space'] = true;
     }
 
@@ -143,6 +215,7 @@ class Game {
         this.isGameOver = true;
         document.getElementById('final-score').innerText = this.score;
         document.getElementById('game-over-screen').classList.remove('hidden');
+        // Save score if logged in (Firestore logic would go here)
     }
 
     updateUI() {
@@ -160,13 +233,11 @@ class Game {
             this.enemies.push(new Enemy(x, -50));
             this.lastEnemySpawn = timestamp;
             
-            // Gradually increase difficulty
-            CONFIG.enemy.spawnRate = Math.max(300, 1000 - (this.score * 2));
+            CONFIG.enemy.spawnRate = Math.max(300, 1000 - (this.score * 0.5));
         }
     }
 
     handleCollisions() {
-        // Bullet vs Enemy
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 const b = this.bullets[i];
@@ -177,14 +248,13 @@ class Game {
                     this.createExplosion(e.x, e.y, '#ffd700');
                     this.bullets.splice(i, 1);
                     this.enemies.splice(j, 1);
-                    this.score += 10;
+                    this.score += 100; // Reward points for kill
                     this.updateUI();
                     break;
                 }
             }
         }
 
-        // Enemy vs Player
         if (this.player && !this.isGameOver) {
             for (let i = this.enemies.length - 1; i >= 0; i--) {
                 const e = this.enemies[i];
@@ -215,7 +285,6 @@ class Game {
 
         this.player.update(this.keys, this.canvas);
         
-        // Shooting
         if ((this.keys['Space'] || this.keys['KeyZ']) && timestamp - this.lastShotTime > CONFIG.player.shootInterval) {
             this.bullets.push(new Bullet(this.player.x, this.player.y - 20));
             this.lastShotTime = timestamp;
@@ -283,7 +352,6 @@ class Player {
         this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x + dx));
         this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y + dy));
         
-        // Smooth tilt effect
         if (dx < 0) this.tilt = Math.max(-0.3, this.tilt - 0.05);
         else if (dx > 0) this.tilt = Math.min(0.3, this.tilt + 0.05);
         else this.tilt *= 0.9;
@@ -293,13 +361,9 @@ class Player {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.tilt);
-        
-        // Modern airplane shape (simplified)
         ctx.shadowBlur = 15;
         ctx.shadowColor = this.color;
-        
         ctx.fillStyle = this.color;
-        // Body
         ctx.beginPath();
         ctx.moveTo(0, -25);
         ctx.lineTo(15, 10);
@@ -307,15 +371,12 @@ class Player {
         ctx.lineTo(-15, 10);
         ctx.closePath();
         ctx.fill();
-        
-        // Wings
         ctx.beginPath();
         ctx.moveTo(-30, 0);
         ctx.lineTo(30, 0);
         ctx.lineWidth = 4;
         ctx.strokeStyle = this.color;
         ctx.stroke();
-
         ctx.restore();
     }
 }
@@ -331,7 +392,7 @@ class Enemy {
 
     update() {
         this.y += this.speed;
-        this.x += Math.sin(this.y / 30) * 1.5; // Slight waving motion
+        this.x += Math.sin(this.y / 30) * 1.5;
     }
 
     draw(ctx) {
@@ -339,7 +400,6 @@ class Enemy {
         ctx.shadowBlur = 10;
         ctx.shadowColor = this.color;
         ctx.fillStyle = this.color;
-        
         ctx.beginPath();
         ctx.moveTo(this.x, this.y + 20);
         ctx.lineTo(this.x - 15, this.y - 10);
@@ -347,7 +407,6 @@ class Enemy {
         ctx.lineTo(this.x + 15, this.y - 10);
         ctx.closePath();
         ctx.fill();
-        
         ctx.restore();
     }
 }

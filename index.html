@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>1945 Air Force - Modern Remake</title>
+    <title>이기킹의 비행기 - 1945 Air Force</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <div id="game-container">
@@ -16,14 +20,39 @@
             </div>
         </div>
         <div id="start-screen" class="overlay">
-            <h1>1945 AIR FORCE</h1>
-            <p>FLY AND SURVIVE</p>
-            <button id="start-button">START MISSION</button>
+            <div class="user-info hidden" id="user-info">
+                <img src="" alt="avatar" id="user-avatar">
+                <span id="user-name"></span>
+            </div>
+            <h1>이기킹의 비행기</h1>
+            <p>하늘의 지배자, 전설의 비행이 시작됩니다</p>
+            
+            <div class="menu-controls">
+                <button id="login-button" class="google-btn">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/pwa/google.svg" alt="Google icon">
+                    Google 로그인
+                </button>
+                <button id="start-button" class="hidden">미션 시작</button>
+                <button id="scoreboard-button">점수판</button>
+            </div>
         </div>
+
+        <!-- Scoreboard Modal -->
+        <div id="scoreboard-modal" class="overlay hidden">
+            <h2>TOP PILOTS</h2>
+            <div id="scores-list">
+                <!-- Scores will be loaded here -->
+                <div class="score-entry">1. 이기킹 - 99999</div>
+                <div class="score-entry">2. 에이스 - 85000</div>
+                <div class="score-entry">3. 윙맨 - 72000</div>
+            </div>
+            <button id="close-scoreboard">닫기</button>
+        </div>
+
         <div id="game-over-screen" class="overlay hidden">
             <h1>MISSION FAILED</h1>
-            <p>FINAL SCORE: <span id="final-score">0</span></p>
-            <button id="restart-button">RETRY</button>
+            <p>최종 점수: <span id="final-score">0</span></p>
+            <button id="restart-button">재도전</button>
         </div>
     </div>
     <script type="module" src="main.js"></script>

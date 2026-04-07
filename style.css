@@ -1,6 +1,7 @@
 :root {
     --primary-color: #ff3e3e;
     --secondary-color: #ffd700;
+    --accent-color: #00f2ff;
     --bg-dark: #0a0a0c;
     --text-light: #ffffff;
     --glow-effect: 0 0 15px rgba(255, 62, 62, 0.7);
@@ -93,54 +94,143 @@ canvas {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(5px);
     z-index: 20;
     text-align: center;
     padding: 20px;
 }
 
+#start-screen {
+    background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('photo/2.png');
+    background-size: cover;
+    background-position: center;
+}
+
 .overlay h1 {
-    font-size: 3rem;
+    font-size: 2.5rem;
     margin-bottom: 10px;
-    color: var(--primary-color);
-    text-shadow: var(--glow-effect);
-    letter-spacing: 5px;
+    color: var(--secondary-color);
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+    letter-spacing: 2px;
+    font-weight: 800;
 }
 
 .overlay p {
-    font-size: 1.2rem;
+    font-size: 1rem;
     margin-bottom: 30px;
-    color: var(--secondary-color);
-    text-transform: uppercase;
-    letter-spacing: 2px;
+    color: var(--text-light);
+    opacity: 0.9;
+    letter-spacing: 1px;
+}
+
+.menu-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 80%;
+    max-width: 250px;
 }
 
 button {
-    padding: 15px 40px;
-    font-size: 1.2rem;
+    padding: 12px 25px;
+    font-size: 1rem;
     background: var(--primary-color);
     color: white;
     border: none;
-    border-radius: 30px;
+    border-radius: 8px;
     cursor: pointer;
     font-weight: bold;
     text-transform: uppercase;
-    transition: all 0.3s ease;
-    box-shadow: var(--glow-effect);
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 10px rgba(255, 62, 62, 0.3);
 }
 
 button:hover {
-    transform: scale(1.05);
-    background: #ff5e5e;
-    box-shadow: 0 0 25px rgba(255, 62, 62, 0.9);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(255, 62, 62, 0.5);
+}
+
+.google-btn {
+    background: white;
+    color: #757575;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-transform: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+}
+
+.google-btn img {
+    width: 18px;
+    height: 18px;
+}
+
+.google-btn:hover {
+    background: #f1f1f1;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+}
+
+#scoreboard-button {
+    background: transparent;
+    border: 1px solid var(--secondary-color);
+    color: var(--secondary-color);
+    box-shadow: none;
+}
+
+#scoreboard-modal h2 {
+    color: var(--secondary-color);
+    margin-bottom: 20px;
+    letter-spacing: 3px;
+}
+
+#scores-list {
+    width: 100%;
+    max-width: 300px;
+    margin-bottom: 30px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.score-entry {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 1.1rem;
+    color: var(--text-light);
+}
+
+.user-info {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 5px 15px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#user-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+
+#user-name {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
 }
 
 .hidden {
     display: none !important;
 }
 
-/* Background Texture Effect */
 #game-container::after {
     content: "";
     position: absolute;
@@ -149,6 +239,6 @@ button:hover {
     width: 100%;
     height: 100%;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    opacity: 0.05;
+    opacity: 0.03;
     pointer-events: none;
 }
