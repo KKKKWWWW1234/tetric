@@ -1,59 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>이기킹의 비행기 - 1945 Air Force</title>
+    <title>이기킹의 비행기 - 1945 슈팅 게임</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
+        
+        <!-- 인게임 HUD -->
         <div id="ui-overlay">
-            <div id="score-board">SCORE: <span id="score-value">0</span></div>
-            <div id="health-bar-container">
-                <div id="health-bar"></div>
+            <div id="hud-left">
+                <div id="score-label">SCORE</div>
+                <div id="score-value">0</div>
+            </div>
+            <div id="hud-right">
+                <div id="wave-label">WAVE 1</div>
+                <div id="health-bar-container">
+                    <div id="health-bar"></div>
+                </div>
             </div>
         </div>
+
+        <!-- 시작 화면 -->
         <div id="start-screen" class="overlay">
-            <div class="user-info hidden" id="user-info">
-                <img src="" alt="avatar" id="user-avatar">
-                <span id="user-name"></span>
+            <div class="title-container">
+                <h1>이기킹의 비행기</h1>
+                <p class="subtitle">전설의 비행이 시작됩니다. 하늘의 지배자가 되어보세요!</p>
             </div>
-            <h1>이기킹의 비행기</h1>
-            <p>하늘의 지배자, 전설의 비행이 시작됩니다</p>
             
             <div class="menu-controls">
-                <button id="login-button" class="google-btn">
-                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/pwa/google.svg" alt="Google icon">
-                    Google 로그인
-                </button>
-                <button id="start-button" class="hidden">미션 시작</button>
-                <button id="scoreboard-button">점수판</button>
+                <button id="start-button" class="main-btn">미션 시작</button>
+                <button id="scoreboard-button" class="sub-btn">점수판</button>
             </div>
         </div>
 
-        <!-- Scoreboard Modal -->
+        <!-- 점수판 모달 -->
         <div id="scoreboard-modal" class="overlay hidden">
-            <h2>TOP PILOTS</h2>
-            <div id="scores-list">
-                <!-- Scores will be loaded here -->
-                <div class="score-entry">1. 이기킹 - 99999</div>
-                <div class="score-entry">2. 에이스 - 85000</div>
-                <div class="score-entry">3. 윙맨 - 72000</div>
+            <div class="modal-content">
+                <h2>명예의 전당</h2>
+                <div id="scores-list">
+                    <!-- 스크립트에서 동적으로 생성됨 -->
+                </div>
+                <button id="close-scoreboard" class="sub-btn">닫기</button>
             </div>
-            <button id="close-scoreboard">닫기</button>
         </div>
 
+        <!-- 게임 오버 화면 -->
         <div id="game-over-screen" class="overlay hidden">
-            <h1>MISSION FAILED</h1>
-            <p>최종 점수: <span id="final-score">0</span></p>
-            <button id="restart-button">재도전</button>
+            <div class="game-over-content">
+                <h1>MISSION FAILED</h1>
+                <p class="final-score-text">최종 점수: <span id="final-score">0</span></p>
+                <div class="menu-controls">
+                    <button id="restart-button" class="main-btn">재도전</button>
+                    <button id="exit-button" class="sub-btn">처음으로</button>
+                </div>
+            </div>
         </div>
+
+        <!-- 파워업 알림 -->
+        <div id="powerup-notify" class="hidden">POWER UP!</div>
     </div>
     <script type="module" src="main.js"></script>
 </body>
