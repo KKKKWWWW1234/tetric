@@ -1,6 +1,5 @@
 /**
- * 이기킹의 비행기 - 1945 슈팅 게임
- * Modern Vanilla JS + Canvas API
+ * 이기킹의 비행기 - 1945 슈팅 게임 (이미지 확대 & 레이저 패턴 추가 버전)
  */
 
 // --- CONFIGURATION ---
@@ -9,27 +8,37 @@ const CONFIG = {
         speed: 5,
         shootInterval: 250,
         health: 100,
-        width: 50,
-        height: 50,
-        invincibleDuration: 1500, // 피격 후 무적 시간 (ms)
+        width: 100,  // 50 -> 100 (2배 확대)
+        height: 100, // 50 -> 100
+        hitboxRadius: 30, // 시각적 크기보다 작게 설정 (공정한 판정)
+        invincibleDuration: 1500,
     },
     enemy: {
-        width: 45,
-        height: 45,
-        baseSpawnRate: 1200, // 초기 적 스폰 간격 (ms)
-        minSpawnRate: 400,    // 최소 적 스폰 간격 (난이도 상한)
+        width: 90,   // 45 -> 90 (2배 확대)
+        height: 90,  // 45 -> 90
+        hitboxRadius: 35,
+        baseSpawnRate: 1200,
+        minSpawnRate: 400,
         baseSpeed: 2.5,
     },
     bullet: {
-        speed: 9,
+        speed: 10,
         radius: 4,
         color: '#00f2ff'
     },
     item: {
-        width: 30,
-        height: 30,
+        width: 35,
+        height: 35,
         speed: 2,
-        spawnChance: 0.1 // 적 처치 시 아이템 드롭 확률
+        spawnChance: 0.12
+    },
+    laser: {
+        unlockTime: 15000,      // 15초 후 등장
+        warningDuration: 1200,  // 경고 시간 (ms)
+        activeDuration: 1500,   // 발사 시간 (ms)
+        cooldown: 4000,         // 다음 레이저까지 대기 시간 (ms)
+        width: 70,              // 레이저 두께
+        damage: 25              // 레이저 데미지
     }
 };
 
@@ -44,33 +53,23 @@ function loadAssets() {
     Object.keys(ASSETS).forEach(key => {
         const asset = ASSETS[key];
         asset.img.src = asset.src;
-        
-        asset.img.onload = () => {
-            asset.ready = true;
-            console.log(`Asset Loaded: ${key}`);
-        };
-        
-        asset.img.onerror = () => {
-            asset.ready = false;
-            console.error(`Asset Failed: ${key} (${asset.src})`);
-        };
+        asset.img.onload = () => { asset.ready = true; };
+        asset.img.onerror = () => { asset.ready = false; };
     });
 }
 
 // --- STORAGE MANAGER ---
 const StorageManager = {
     SAVE_KEY: 'igiking_high_scores',
-    
     getScores() {
         const data = localStorage.getItem(this.SAVE_KEY);
         return data ? JSON.parse(data) : [];
     },
-
     saveScore(score) {
         let scores = this.getScores();
         scores.push({ score, date: new Date().toLocaleDateString() });
         scores.sort((a, b) => b.score - a.score);
-        scores = scores.slice(0, 5); // 상위 5개만 유지
+        scores = scores.slice(0, 5);
         localStorage.setItem(this.SAVE_KEY, JSON.stringify(scores));
     }
 };
@@ -94,6 +93,11 @@ class Game {
         this.items = [];
         this.particles = [];
         
+        // 레이저 관련 상태
+        this.lasers = [];
+        this.laserState = 'WAITING'; // WAITING, WARNING, FIRING
+        this.laserTimer = 0;
+        
         this.lastEnemySpawn = 0;
         this.lastShotTime = 0;
         this.bgY = 0;
@@ -106,11 +110,9 @@ class Game {
         loadAssets();
         this.resize();
         window.addEventListener('resize', () => this.resize());
-        
         window.addEventListener('keydown', (e) => this.keys[e.code] = true);
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
 
-        // UI 이벤트 바인딩
         document.getElementById('start-button').onclick = () => this.start();
         document.getElementById('restart-button').onclick = () => this.start();
         document.getElementById('exit-button').onclick = () => location.reload();
@@ -132,6 +134,10 @@ class Game {
         this.enemies = [];
         this.items = [];
         this.particles = [];
+        this.lasers = [];
+        this.laserState = 'WAITING';
+        this.laserTimer = CONFIG.laser.cooldown;
+        
         this.score = 0;
         this.gameTime = 0;
         this.difficultyFactor = 1;
@@ -176,6 +182,7 @@ class Game {
         if (this.player) {
             const hpPercent = Math.max(0, (this.player.health / CONFIG.player.health) * 100);
             healthBar.style.width = `${hpPercent}%`;
+            healthBar.style.background = hpPercent < 30 ? '#ff3e3e' : 'linear-gradient(to right, #ff3e3e, #ff7e7e)';
         }
     }
 
@@ -189,16 +196,31 @@ class Game {
         }
     }
 
-    createExplosion(x, y, color, count = 15) {
-        for (let i = 0; i < count; i++) {
-            this.particles.push(new Particle(x, y, color));
-        }
-    }
+    // 레이저 로직 업데이트
+    updateLasers(dt) {
+        if (this.gameTime < CONFIG.laser.unlockTime) return;
 
-    notifyPowerUp() {
-        const el = document.getElementById('powerup-notify');
-        el.classList.remove('hidden');
-        setTimeout(() => el.classList.add('hidden'), 2000);
+        this.laserTimer -= dt;
+
+        if (this.laserState === 'WAITING' && this.laserTimer <= 0) {
+            this.laserState = 'WARNING';
+            this.laserTimer = CONFIG.laser.warningDuration;
+            // 무작위 2~3개 라인 생성 (화면 가로를 5등분)
+            const laneWidth = this.canvas.width / 5;
+            const selectedLanes = [];
+            while(selectedLanes.length < 2) {
+                const lane = Math.floor(Math.random() * 5);
+                if (!selectedLanes.includes(lane)) selectedLanes.push(lane);
+            }
+            this.lasers = selectedLanes.map(lane => (lane * laneWidth) + (laneWidth / 2));
+        } else if (this.laserState === 'WARNING' && this.laserTimer <= 0) {
+            this.laserState = 'FIRING';
+            this.laserTimer = CONFIG.laser.activeDuration;
+        } else if (this.laserState === 'FIRING' && this.laserTimer <= 0) {
+            this.laserState = 'WAITING';
+            this.laserTimer = CONFIG.laser.cooldown - (this.difficultyFactor * 500); // 후반부로 갈수록 쿨타임 감소
+            this.lasers = [];
+        }
     }
 
     handleCollisions() {
@@ -208,33 +230,43 @@ class Game {
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 const e = this.enemies[j];
                 const dist = Math.hypot(b.x - e.x, b.y - e.y);
-                if (dist < 30) {
+                if (dist < CONFIG.enemy.hitboxRadius + 5) {
                     this.createExplosion(e.x, e.y, '#ffd700');
                     this.enemies.splice(j, 1);
                     this.bullets.splice(i, 1);
                     this.score += 100 * this.wave;
-                    
-                    if (Math.random() < CONFIG.item.spawnChance) {
-                        this.items.push(new Item(e.x, e.y));
-                    }
-                    
+                    if (Math.random() < CONFIG.item.spawnChance) this.items.push(new Item(e.x, e.y));
                     this.updateUI();
                     break;
                 }
             }
         }
 
+        if (!this.player || this.player.isInvincible) return;
+
         // Enemy vs Player
-        if (this.player && !this.player.isInvincible) {
-            for (let i = this.enemies.length - 1; i >= 0; i--) {
-                const e = this.enemies[i];
-                const dist = Math.hypot(this.player.x - e.x, this.player.y - e.y);
-                if (dist < 35) {
-                    this.player.hit();
-                    this.createExplosion(this.player.x, this.player.y, '#ff3e3e', 25);
-                    this.enemies.splice(i, 1);
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            const e = this.enemies[i];
+            const dist = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+            if (dist < CONFIG.player.hitboxRadius + CONFIG.enemy.hitboxRadius - 10) {
+                this.player.hit(20);
+                this.createExplosion(this.player.x, this.player.y, '#ff3e3e', 25);
+                this.enemies.splice(i, 1);
+                this.updateUI();
+                if (this.player.health <= 0) this.gameOver();
+            }
+        }
+
+        // Laser vs Player
+        if (this.laserState === 'FIRING') {
+            for (const lx of this.lasers) {
+                const halfWidth = CONFIG.laser.width / 2;
+                if (Math.abs(this.player.x - lx) < halfWidth + (CONFIG.player.hitboxRadius * 0.7)) {
+                    this.player.hit(CONFIG.laser.damage);
+                    this.createExplosion(this.player.x, this.player.y, '#ffffff', 10);
                     this.updateUI();
                     if (this.player.health <= 0) this.gameOver();
+                    break;
                 }
             }
         }
@@ -243,21 +275,30 @@ class Game {
         for (let i = this.items.length - 1; i >= 0; i--) {
             const item = this.items[i];
             const dist = Math.hypot(this.player.x - item.x, this.player.y - item.y);
-            if (dist < 40) {
+            if (dist < 45) {
                 this.player.powerUp();
                 this.items.splice(i, 1);
-                this.notifyPowerUp();
                 this.score += 500;
                 this.updateUI();
+                const el = document.getElementById('powerup-notify');
+                el.classList.remove('hidden');
+                setTimeout(() => el.classList.add('hidden'), 2000);
             }
+        }
+    }
+
+    createExplosion(x, y, color, count = 15) {
+        for (let i = 0; i < count; i++) {
+            this.particles.push(new Particle(x, y, color));
         }
     }
 
     update(timestamp) {
         if (!this.isStarted || this.isGameOver) return;
 
-        this.gameTime += 16.67;
-        this.difficultyFactor = 1 + (this.gameTime / 20000);
+        const dt = 16.67; 
+        this.gameTime += dt;
+        this.difficultyFactor = 1 + (this.gameTime / 25000);
         const newWave = Math.floor(this.gameTime / 20000) + 1;
         if (newWave !== this.wave) {
             this.wave = newWave;
@@ -265,14 +306,15 @@ class Game {
         }
 
         this.player.update(this.keys, this.canvas);
+        this.updateLasers(dt);
         
         const shootInt = CONFIG.player.shootInterval / (1 + (this.player.powerLevel * 0.2));
         if ((this.keys['Space'] || this.keys['KeyZ']) && timestamp - this.lastShotTime > shootInt) {
             if (this.player.powerLevel >= 2) {
-                this.bullets.push(new Bullet(this.player.x - 15, this.player.y - 20));
-                this.bullets.push(new Bullet(this.player.x + 15, this.player.y - 20));
+                this.bullets.push(new Bullet(this.player.x - 25, this.player.y - 20));
+                this.bullets.push(new Bullet(this.player.x + 25, this.player.y - 20));
             } else {
-                this.bullets.push(new Bullet(this.player.x, this.player.y - 30));
+                this.bullets.push(new Bullet(this.player.x, this.player.y - 35));
             }
             this.lastShotTime = timestamp;
         }
@@ -285,7 +327,7 @@ class Game {
         this.spawnEnemy(timestamp);
         this.enemies.forEach((e, i) => {
             e.update();
-            if (e.y > this.canvas.height + 50) this.enemies.splice(i, 1);
+            if (e.y > this.canvas.height + 100) this.enemies.splice(i, 1);
         });
 
         this.items.forEach((item, i) => {
@@ -304,7 +346,7 @@ class Game {
     draw() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // 배경 드로잉 (무한 스크롤)
+        // 배경 드로잉
         if (ASSETS.background.ready) {
             const img = ASSETS.background.img;
             const scale = this.canvas.width / img.width;
@@ -317,6 +359,27 @@ class Game {
             this.ctx.fillStyle = '#0a0a0c';
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
+
+        // 레이저 드로잉
+        this.lasers.forEach(lx => {
+            if (this.laserState === 'WARNING') {
+                this.ctx.fillStyle = 'rgba(255, 60, 60, 0.25)';
+                this.ctx.fillRect(lx - CONFIG.laser.width/2, 0, CONFIG.laser.width, this.canvas.height);
+                this.ctx.strokeStyle = 'rgba(255, 100, 100, 0.5)';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(lx - CONFIG.laser.width/2, 0, CONFIG.laser.width, this.canvas.height);
+            } else if (this.laserState === 'FIRING') {
+                const grad = this.ctx.createLinearGradient(lx - CONFIG.laser.width/2, 0, lx + CONFIG.laser.width/2, 0);
+                grad.addColorStop(0, 'rgba(255, 0, 0, 0.8)');
+                grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
+                grad.addColorStop(1, 'rgba(255, 0, 0, 0.8)');
+                this.ctx.fillStyle = grad;
+                this.ctx.shadowBlur = 20;
+                this.ctx.shadowColor = 'red';
+                this.ctx.fillRect(lx - CONFIG.laser.width/2, 0, CONFIG.laser.width, this.canvas.height);
+                this.ctx.shadowBlur = 0;
+            }
+        });
 
         if (!this.isStarted) return;
 
@@ -351,8 +414,8 @@ class Player {
         if (keys['ArrowUp'] || keys['KeyW']) dy -= CONFIG.player.speed;
         if (keys['ArrowDown'] || keys['KeyS']) dy += CONFIG.player.speed;
 
-        this.x = Math.max(30, Math.min(canvas.width - 30, this.x + dx));
-        this.y = Math.max(30, Math.min(canvas.height - 30, this.y + dy));
+        this.x = Math.max(CONFIG.player.width/2, Math.min(canvas.width - CONFIG.player.width/2, this.x + dx));
+        this.y = Math.max(CONFIG.player.height/2, Math.min(canvas.height - CONFIG.player.height/2, this.y + dy));
         
         if (dx < 0) this.tilt = Math.max(-0.2, this.tilt - 0.04);
         else if (dx > 0) this.tilt = Math.min(0.2, this.tilt + 0.04);
@@ -364,8 +427,9 @@ class Player {
         }
     }
 
-    hit() {
-        this.health -= 20;
+    hit(dmg) {
+        if (this.isInvincible) return;
+        this.health -= dmg;
         this.isInvincible = true;
         this.invincibleTimer = CONFIG.player.invincibleDuration;
     }
@@ -378,16 +442,13 @@ class Player {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.tilt);
-        
-        if (this.isInvincible && Math.floor(Date.now() / 100) % 2 === 0) {
-            ctx.globalAlpha = 0.3;
-        }
+        if (this.isInvincible && Math.floor(Date.now() / 100) % 2 === 0) ctx.globalAlpha = 0.3;
 
         if (ASSETS.player.ready) {
             ctx.drawImage(ASSETS.player.img, -CONFIG.player.width/2, -CONFIG.player.height/2, CONFIG.player.width, CONFIG.player.height);
         } else {
             ctx.fillStyle = '#ff3e3e';
-            ctx.beginPath(); ctx.moveTo(0, -25); ctx.lineTo(25, 15); ctx.lineTo(-25, 15); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(0, -CONFIG.player.height/2); ctx.lineTo(CONFIG.player.width/2, CONFIG.player.height/2); ctx.lineTo(-CONFIG.player.width/2, CONFIG.player.height/2); ctx.closePath(); ctx.fill();
         }
         ctx.restore();
     }
@@ -406,7 +467,7 @@ class Enemy {
         this.y += this.speed;
         if (this.type === 'sine') {
             this.time += 0.05;
-            this.x = this.initialX + Math.sin(this.time) * 60;
+            this.x = this.initialX + Math.sin(this.time) * 80;
         }
     }
 
@@ -418,7 +479,7 @@ class Enemy {
             ctx.drawImage(ASSETS.enemy.img, -CONFIG.enemy.width/2, -CONFIG.enemy.height/2, CONFIG.enemy.width, CONFIG.enemy.height);
         } else {
             ctx.fillStyle = '#ffd700';
-            ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, CONFIG.enemy.width/2, 0, Math.PI*2); ctx.fill();
         }
         ctx.restore();
     }
@@ -440,9 +501,9 @@ class Item {
     draw(ctx) {
         ctx.fillStyle = '#ffd700';
         ctx.beginPath();
-        ctx.moveTo(this.x, this.y - 15);
-        ctx.lineTo(this.x + 15, this.y + 15);
-        ctx.lineTo(this.x - 15, this.y + 15);
+        ctx.moveTo(this.x, this.y - CONFIG.item.height/2);
+        ctx.lineTo(this.x + CONFIG.item.width/2, this.y + CONFIG.item.height/2);
+        ctx.lineTo(this.x - CONFIG.item.width/2, this.y + CONFIG.item.height/2);
         ctx.closePath();
         ctx.fill();
         ctx.shadowBlur = 15; ctx.shadowColor = '#ffd700';
@@ -467,5 +528,4 @@ class Particle {
     }
 }
 
-// 엔진 가동
 new Game();
